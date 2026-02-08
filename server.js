@@ -10,8 +10,7 @@ const {
   MFB_CLIENT_SECRET,
   MFB_REFRESH_TOKEN,
   MFB_TOKEN_URL,
-  MFB_RESOURCE_URL,
-  MFB_RESOURCE_ACTION, // 例如 AddPendingFlight
+  MFB_RESOURCE_URL, // 必须是 .../logbook/mvc/oAuth/OAuthResource
 } = process.env;
 
 function must(name, v) {
@@ -42,7 +41,7 @@ async function getAccessToken() {
     client_secret: MFB_CLIENT_SECRET,
   });
 
-  {
+  const resp = await fetch(MFB_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -57,6 +56,7 @@ async function getAccessToken() {
   const data = JSON.parse(text);
   const access = data.access_token || data.authtoken;
   const expiresIn = Number(data.expires_in || 3600);
+
   if (!access) throw new Error(`No access_token in response: ${text}`);
 
   cached.token = access;
@@ -64,7 +64,7 @@ async function getAccessToken() {
   return access;
 }
 
-app.get("/health", (_req, res) => res.json({ ok: true, v: "v4" }));
+app.get("/health", (_req, res) => res.json({ ok: true, v: "v4-clean" }));
 
 app.get("/oauth/check", async (_req, res) => {
   try {
@@ -74,27 +74,38 @@ app.get("/oauth/check", async (_req, res) => {
       access_token: redact(t),
       expiresAt: new Date(cached.expMs).toISOString(),
       resourceUrlConfigured: !!MFB_RESOURCE_URL,
-      resourceActionConfigured: !!MFB_RESOURCE_ACTION,
     });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });
 
+/**
+ * POST /mfb/pending
+ * Body: MyFlightbook flight JSON (先传 {} 测通路由也行)
+ */
 app.post("/mfb/pending", async (req, res) => {
   try {
     must("MFB_RESOURCE_URL", MFB_RESOURCE_URL);
-   
+
+    const accessToken = await getAccessToken();
+
+    // Test Bed 抓包显示为：POST .../OAuthResource/CreatePendingFlight
+    const base = MFB_RESOURCE_URL.replace(/\/+$/, "");
+    const endpoint = `${base}/CreatePendingFlight`;
+
     const u = new URL(endpoint);
     u.searchParams.set("json", "1");
+
+    // 双保险：有些实现仍会读 authtoken
     u.searchParams.set("authtoken", accessToken);
 
     const mfbResp = await fetch(u.toString(), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Accept": "application/json",
-        "Authorization": `Bearer ${accessToken}`,
+        Accept: "application/json",
+        Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify(req.body ?? {}),
     });
@@ -105,7 +116,7 @@ app.post("/mfb/pending", async (req, res) => {
       return res.status(mfbResp.status).json({
         ok: false,
         status: mfbResp.status,
-        error: text
+        error: text,
       });
     }
 
@@ -114,82 +125,9 @@ app.post("/mfb/pending", async (req, res) => {
     } catch {
       return res.json({ ok: true, result: text });
     }
-
   } catch (e) {
     return res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });
 
-
-// ✅ CreatePendingFlight 的正确 URL：/OAuthResource/CreatePendingFlight
-
-const u = new URL(endpoint);
-u.searchParams.set("json", "1");
-// ✅ 双保险：有些实现认 query 的 authtoken
-u.searchParams.set("authtoken", accessToken);
-
- {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    "Accept": "application/json",
-    // ✅ 双保险：也按你抓包的 Bearer 来
-    "Authorization": `Bearer ${accessToken}`,
-  },
-  body: JSON.stringify(req.body ?? {}),
-});
-
-
-
- {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify(req.body ?? {}),
-    });
-
-    const text = await resp.text();
-    if (!resp.ok) {
-      return res.status(resp.status).json({
-        ok: false,
-        status: resp.status,
-        error: text,
-        hint: "Missing access token：确认调用 /OAuthResource/CreatePendingFlight，并携带 Authorization: Bearer 或 authtoken 参数（现在两者都带了）",
-
-      });
-    }
-
-    try {
-      return res.json({ ok: true, result: JSON.parse(text) });
-    } catch {
-      return res.json({ ok: true, result: text });
-    }
-  } catch (e) {
-    res.status(500).json({ ok: false, error: String(e.message || e) });
-  }
-});
-
 app.listen(PORT, () => console.log(`Listening on ${PORT}`));
-
-app.get("/mfb/actions", async (req, res) => {
-  try {
-    must("MFB_RESOURCE_URL", MFB_RESOURCE_URL);
-
-    const authtoken = await getAccessToken();
-
-    const url = new URL(MFB_RESOURCE_URL);
-    url.searchParams.set("authtoken", authtoken);
-    url.searchParams.set("json", "1");
-
-    // 不传 action，很多实现会返回支持的 actions 或帮助信息
-   {
-      method: "GET",
-      headers: { Accept: "application/json" },
-    });
-
-    const text = await resp.text();
-    res.status(resp.status).send(text);
-  } catch (e) {
-    res.status(500).json({ ok: false, error: String(e.message || e) });
-  }
-});
-
