@@ -64,7 +64,7 @@ async function getAccessToken() {
   return access;
 }
 
-app.get("/health", (_req, res) => res.json({ ok: true }));
+app.get("/health", (_req, res) => res.json({ ok: true, v: "pending-v3" }));
 
 app.get("/oauth/check", async (_req, res) => {
   try {
