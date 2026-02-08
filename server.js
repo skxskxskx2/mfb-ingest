@@ -42,7 +42,7 @@ async function getAccessToken() {
     client_secret: MFB_CLIENT_SECRET,
   });
 
-  const resp = await fetch(MFB_TOKEN_URL, {
+  {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -81,18 +81,54 @@ app.get("/oauth/check", async (_req, res) => {
   }
 });
 
-// ✅ CreatePendingFlight 的正确 URL：/OAuthResource/CreatePendingFlight
-const base = MFB_RESOURCE_URL.replace(/\/+$/, "");
-const endpoint = `${base}/CreatePendingFlight`;
+app.post("/mfb/pending", async (req, res) => {
+  try {
+    must("MFB_RESOURCE_URL", MFB_RESOURCE_URL);
+   
+    const u = new URL(endpoint);
+    u.searchParams.set("json", "1");
+    u.searchParams.set("authtoken", accessToken);
 
-const accessToken = await getAccessToken();
+    const mfbResp = await fetch(u.toString(), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Authorization": `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(req.body ?? {}),
+    });
+
+    const text = await mfbResp.text();
+
+    if (!mfbResp.ok) {
+      return res.status(mfbResp.status).json({
+        ok: false,
+        status: mfbResp.status,
+        error: text
+      });
+    }
+
+    try {
+      return res.json({ ok: true, result: JSON.parse(text) });
+    } catch {
+      return res.json({ ok: true, result: text });
+    }
+
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+
+// ✅ CreatePendingFlight 的正确 URL：/OAuthResource/CreatePendingFlight
 
 const u = new URL(endpoint);
 u.searchParams.set("json", "1");
 // ✅ 双保险：有些实现认 query 的 authtoken
 u.searchParams.set("authtoken", accessToken);
 
-const resp = await fetch(u.toString(), {
+ {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
@@ -105,7 +141,7 @@ const resp = await fetch(u.toString(), {
 
 
 
-    const resp = await fetch(url.toString(), {
+ {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       body: JSON.stringify(req.body ?? {}),
@@ -145,7 +181,7 @@ app.get("/mfb/actions", async (req, res) => {
     url.searchParams.set("json", "1");
 
     // 不传 action，很多实现会返回支持的 actions 或帮助信息
-    const resp = await fetch(url.toString(), {
+   {
       method: "GET",
       headers: { Accept: "application/json" },
     });
