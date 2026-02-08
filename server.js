@@ -11,6 +11,7 @@ const {
   MFB_REFRESH_TOKEN,
   MFB_TOKEN_URL,
   MFB_RESOURCE_URL,
+  MFB_RESOURCE_ACTION, // 例如 AddPendingFlight
 } = process.env;
 
 function must(name, v) {
@@ -43,7 +44,10 @@ async function getAccessToken() {
 
   const resp = await fetch(MFB_TOKEN_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Accept: "application/json",
+    },
     body,
   });
 
@@ -70,7 +74,47 @@ app.get("/oauth/check", async (_req, res) => {
       access_token: redact(t),
       expiresAt: new Date(cached.expMs).toISOString(),
       resourceUrlConfigured: !!MFB_RESOURCE_URL,
+      resourceActionConfigured: !!MFB_RESOURCE_ACTION,
     });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
+// ✅ 注意：这是 POST，不是 GET
+app.post("/mfb/pending", async (req, res) => {
+  try {
+    must("MFB_RESOURCE_URL", MFB_RESOURCE_URL);
+    must("MFB_RESOURCE_ACTION", MFB_RESOURCE_ACTION);
+
+    const authtoken = await getAccessToken();
+
+    const url = new URL(MFB_RESOURCE_URL);
+    url.searchParams.set("authtoken", authtoken);
+    url.searchParams.set("action", MFB_RESOURCE_ACTION);
+    url.searchParams.set("json", "1");
+
+    const resp = await fetch(url.toString(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(req.body ?? {}),
+    });
+
+    const text = await resp.text();
+    if (!resp.ok) {
+      return res.status(resp.status).json({
+        ok: false,
+        status: resp.status,
+        error: text,
+        hint: "如果报 action 无效：确认 Render 里 MFB_RESOURCE_ACTION=AddPendingFlight",
+      });
+    }
+
+    try {
+      return res.json({ ok: true, result: JSON.parse(text) });
+    } catch {
+      return res.json({ ok: true, result: text });
+    }
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e.message || e) });
   }
