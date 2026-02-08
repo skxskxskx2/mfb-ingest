@@ -64,7 +64,7 @@ async function getAccessToken() {
   return access;
 }
 
-app.get("/health", (_req, res) => res.json({ ok: true, v: "pending-v3" }));
+app.get("/health", (_req, res) => res.json({ ok: true, v: "v4" }));
 
 app.get("/oauth/check", async (_req, res) => {
   try {
@@ -82,18 +82,23 @@ app.get("/oauth/check", async (_req, res) => {
 });
 
 // ✅ CreatePendingFlight 的正确 URL：/OAuthResource/CreatePendingFlight
-const base = MFB_RESOURCE_URL.replace(/\/+$/, "");          // .../OAuthResource
-const url = `${base}/CreatePendingFlight?json=1`;           // 固定动作名（别再用 query action）
+const base = MFB_RESOURCE_URL.replace(/\/+$/, "");
+const endpoint = `${base}/CreatePendingFlight`;
 
-const accessToken = await getAccessToken();                 // 这是 access_token
-// ⚠️ 不要再把 token 放在 url.searchParams 里（不要 authtoken=）
+const accessToken = await getAccessToken();
 
-const resp = await fetch(url, {
+const u = new URL(endpoint);
+u.searchParams.set("json", "1");
+// ✅ 双保险：有些实现认 query 的 authtoken
+u.searchParams.set("authtoken", accessToken);
+
+const resp = await fetch(u.toString(), {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
     "Accept": "application/json",
-    "Authorization": `Bearer ${accessToken}`,               // ✅ 关键
+    // ✅ 双保险：也按你抓包的 Bearer 来
+    "Authorization": `Bearer ${accessToken}`,
   },
   body: JSON.stringify(req.body ?? {}),
 });
@@ -112,7 +117,8 @@ const resp = await fetch(url, {
         ok: false,
         status: resp.status,
         error: text,
-        hint: "Missing access token：确认请求是 /OAuthResource/CreatePendingFlight 且用 Authorization: Bearer <access_token>（不要 authtoken=）",
+        hint: "Missing access token：确认调用 /OAuthResource/CreatePendingFlight，并携带 Authorization: Bearer 或 authtoken 参数（现在两者都带了）",
+
       });
     }
 
