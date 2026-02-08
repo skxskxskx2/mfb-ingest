@@ -89,10 +89,24 @@ app.post("/mfb/pending", async (req, res) => {
 
     const authtoken = await getAccessToken();
 
-    const url = new URL(MFB_RESOURCE_URL);
-    url.searchParams.set("authtoken", authtoken);
-    url.searchParams.set("action", MFB_RESOURCE_ACTION);
-    url.searchParams.set("json", "1");
+   // Resource URL 基础是 .../OAuthResource
+   // 真正 endpoint 是 .../OAuthResource/<ActionName>
+   const base = MFB_RESOURCE_URL.replace(/\/+$/, "");
+   const action = MFB_RESOURCE_ACTION.replace(/^\/+/, "");
+
+   const url = new URL(`${base}/${encodeURIComponent(action)}`);
+   url.searchParams.set("json", "1"); // 如果你想要 JSON response
+
+const resp = await fetch(url.toString(), {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+    "Authorization": `Bearer ${authtoken}`, // ✅ 关键：token 用 Bearer 头，而不是 query
+  },
+  body: JSON.stringify(req.body ?? {}),
+});
+
 
     const resp = await fetch(url.toString(), {
       method: "POST",
@@ -106,7 +120,7 @@ app.post("/mfb/pending", async (req, res) => {
         ok: false,
         status: resp.status,
         error: text,
-        hint: "如果报 action 无效：确认 Render 里 MFB_RESOURCE_ACTION=AddPendingFlight",
+        hint: "确认 Render: MFB_RESOURCE_ACTION=CreatePendingFlight，并且 Resource URL 以 .../OAuthResource 结尾",
       });
     }
 
