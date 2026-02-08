@@ -90,24 +90,31 @@ app.post("/mfb/pending", async (req, res) => {
 
     const accessToken = await getAccessToken();
 
-    // Test Bed 抓包显示为：POST .../OAuthResource/CreatePendingFlight
+    // ✅ TestBed: POST .../OAuthResource/CreatePendingFlight
     const base = MFB_RESOURCE_URL.replace(/\/+$/, "");
     const endpoint = `${base}/CreatePendingFlight`;
 
-    const u = new URL(endpoint);
-    u.searchParams.set("json", "1");
+    // 我们允许你两种发法：
+    // A) 你直接发 { ...flight fields... }
+    // B) 你发 { le: { ...flight fields... } }
+    const leObj =
+      req.body && typeof req.body === "object" && req.body !== null && Object.prototype.hasOwnProperty.call(req.body, "le")
+        ? req.body.le
+        : (req.body ?? {});
 
-    // 双保险：有些实现仍会读 authtoken
-    u.searchParams.set("authtoken", accessToken);
+    // ✅ 关键：MyFlightbook 这里要的 le 是“参数”，不是 JSON body 字段
+    const form = new URLSearchParams();
+    form.set("le", JSON.stringify(leObj));
+    form.set("json", "1"); // 让它尽量返回 json（如果支持）
 
-    const mfbResp = await fetch(u.toString(), {
+    const mfbResp = await fetch(endpoint, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "application/json",
+        "Authorization": `Bearer ${accessToken}`,
       },
-      body: JSON.stringify(req.body ?? {}),
+      body: form.toString(),
     });
 
     const text = await mfbResp.text();
@@ -117,9 +124,11 @@ app.post("/mfb/pending", async (req, res) => {
         ok: false,
         status: mfbResp.status,
         error: text,
+        hint: "如果不再提示 le missing，而开始提示缺字段/格式错误，说明参数传对了。",
       });
     }
 
+    // MyFlightbook 可能返回 JSON 或 HTML/XML，这里都兜底返回
     try {
       return res.json({ ok: true, result: JSON.parse(text) });
     } catch {
@@ -129,5 +138,6 @@ app.post("/mfb/pending", async (req, res) => {
     return res.status(500).json({ ok: false, error: String(e.message || e) });
   }
 });
+
 
 app.listen(PORT, () => console.log(`Listening on ${PORT}`));
