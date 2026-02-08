@@ -81,31 +81,23 @@ app.get("/oauth/check", async (_req, res) => {
   }
 });
 
-// ✅ 注意：这是 POST，不是 GET
-app.post("/mfb/pending", async (req, res) => {
-  try {
-    must("MFB_RESOURCE_URL", MFB_RESOURCE_URL);
-    must("MFB_RESOURCE_ACTION", MFB_RESOURCE_ACTION);
+// ✅ CreatePendingFlight 的正确 URL：/OAuthResource/CreatePendingFlight
+const base = MFB_RESOURCE_URL.replace(/\/+$/, "");          // .../OAuthResource
+const url = `${base}/CreatePendingFlight?json=1`;           // 固定动作名（别再用 query action）
 
-    const authtoken = await getAccessToken();
+const accessToken = await getAccessToken();                 // 这是 access_token
+// ⚠️ 不要再把 token 放在 url.searchParams 里（不要 authtoken=）
 
-   // Resource URL 基础是 .../OAuthResource
-   // 真正 endpoint 是 .../OAuthResource/<ActionName>
-   const base = MFB_RESOURCE_URL.replace(/\/+$/, "");
-   const action = MFB_RESOURCE_ACTION.replace(/^\/+/, "");
-
-   const url = new URL(`${base}/${encodeURIComponent(action)}`);
-   url.searchParams.set("json", "1"); // 如果你想要 JSON response
-
-const resp = await fetch(url.toString(), {
+const resp = await fetch(url, {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
     "Accept": "application/json",
-    "Authorization": `Bearer ${authtoken}`, // ✅ 关键：token 用 Bearer 头，而不是 query
+    "Authorization": `Bearer ${accessToken}`,               // ✅ 关键
   },
   body: JSON.stringify(req.body ?? {}),
 });
+
 
 
     const resp = await fetch(url.toString(), {
@@ -120,7 +112,7 @@ const resp = await fetch(url.toString(), {
         ok: false,
         status: resp.status,
         error: text,
-        hint: "确认 Render: MFB_RESOURCE_ACTION=CreatePendingFlight，并且 Resource URL 以 .../OAuthResource 结尾",
+        hint: "Missing access token：确认请求是 /OAuthResource/CreatePendingFlight 且用 Authorization: Bearer <access_token>（不要 authtoken=）",
       });
     }
 
