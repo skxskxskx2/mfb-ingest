@@ -121,3 +121,27 @@ app.post("/mfb/pending", async (req, res) => {
 });
 
 app.listen(PORT, () => console.log(`Listening on ${PORT}`));
+
+app.get("/mfb/actions", async (req, res) => {
+  try {
+    must("MFB_RESOURCE_URL", MFB_RESOURCE_URL);
+
+    const authtoken = await getAccessToken();
+
+    const url = new URL(MFB_RESOURCE_URL);
+    url.searchParams.set("authtoken", authtoken);
+    url.searchParams.set("json", "1");
+
+    // 不传 action，很多实现会返回支持的 actions 或帮助信息
+    const resp = await fetch(url.toString(), {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    });
+
+    const text = await resp.text();
+    res.status(resp.status).send(text);
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e.message || e) });
+  }
+});
+
